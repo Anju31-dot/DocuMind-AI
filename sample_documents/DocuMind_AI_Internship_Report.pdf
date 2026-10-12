@@ -1,0 +1,148 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R 6 0 R 8 0 R] /Count 3 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 1139 >>
+stream
+BT
+/F1 18 Tf
+50 730 Td
+(DocuMind AI - Technical Architecture Report) Tj
+/F1 13 Tf
+0 -28 Td
+(Page 1: System Overview and Core Design) Tj
+/F1 11 Tf
+0 -32 Td
+(Project Name: DocuMind AI - RAG-Based Document Assistant.) Tj
+0 -24 Td
+(Author: Software Development Engineering Intern Portfolio.) Tj
+0 -24 Td
+(System Goal: Enable conversational question answering over private PDF) Tj
+0 -16 Td
+(documents using Retrieval-Augmented Generation \(RAG\).) Tj
+0 -24 Td
+(Architecture Overview: The system consists of a React Vite frontend and an) Tj
+0 -16 Td
+(Express Node.js backend. When a PDF is uploaded, text is extracted while) Tj
+0 -16 Td
+(preserving exact page numbers.) Tj
+0 -24 Td
+(Document Chunking: The extracted text is split into semantic chunks with a) Tj
+0 -16 Td
+(configurable chunk size of 600 characters and an overlap of 120 characters) Tj
+0 -16 Td
+(to prevent loss of context across boundaries.) Tj
+0 -24 Td
+(Vector Embeddings: Each chunk is converted into high-dimensional vector) Tj
+0 -16 Td
+(representations using embedding model APIs such as Google Gemini) Tj
+0 -16 Td
+(text-embedding-004 or OpenAI text-embedding-3-small.) Tj
+ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 7 0 R >>
+endobj
+7 0 obj
+<< /Length 933 >>
+stream
+BT
+/F1 18 Tf
+50 730 Td
+(DocuMind AI - Technical Architecture Report) Tj
+/F1 13 Tf
+0 -28 Td
+(Page 2: Vector Search and Similarity Metric) Tj
+/F1 11 Tf
+0 -32 Td
+(Vector Storage: Embeddings are indexed in an in-memory vector store) Tj
+0 -16 Td
+(equipped with metadata tracking.) Tj
+0 -24 Td
+(Similarity Calculation: The vector store calculates Cosine Similarity) Tj
+0 -16 Td
+(between the user question vector and all document chunk vectors.) Tj
+0 -24 Td
+(Cosine Formula: Cosine similarity measures the cosine of the angle between) Tj
+0 -16 Td
+(two multi-dimensional vectors, yielding a score between 0.0 and 1.0.) Tj
+0 -24 Td
+(Retrieval Strategy: The top 4 most relevant chunks with highest cosine) Tj
+0 -16 Td
+(similarity are retrieved as context for the language model.) Tj
+0 -24 Td
+(Grounding Constraint: The prompt instructs the LLM to strictly base answers) Tj
+0 -16 Td
+(on retrieved excerpts and cite specific page numbers.) Tj
+ET
+endstream
+endobj
+8 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 9 0 R >>
+endobj
+9 0 obj
+<< /Length 1032 >>
+stream
+BT
+/F1 18 Tf
+50 730 Td
+(DocuMind AI - Technical Architecture Report) Tj
+/F1 13 Tf
+0 -28 Td
+(Page 3: Evaluation, Guardrails, and Performance) Tj
+/F1 11 Tf
+0 -32 Td
+(Hallucination Guardrails: If retrieved chunks do not contain enough facts) Tj
+0 -16 Td
+(to answer a question, the assistant explicitly states: Insufficient) Tj
+0 -16 Td
+(information was found in the uploaded document.) Tj
+0 -24 Td
+(Source Citation: Each response includes clickable citation cards with exact) Tj
+0 -16 Td
+(page numbers and similarity confidence scores.) Tj
+0 -24 Td
+(Security Standards: Secret API keys are stored strictly in backend) Tj
+0 -16 Td
+(environment variables and never exposed to the frontend browser.) Tj
+0 -24 Td
+(Performance Benchmarks: Average document processing time is under 1.5) Tj
+0 -16 Td
+(seconds for typical 10-page documents.) Tj
+0 -24 Td
+(Internship Conclusion: The project demonstrates full-stack proficiency,) Tj
+0 -16 Td
+(prompt engineering, vector search implementation, and clean architectural) Tj
+0 -16 Td
+(design.) Tj
+ET
+endstream
+endobj
+xref
+0 10
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000127 00000 n 
+0000000197 00000 n 
+0000000323 00000 n 
+0000001514 00000 n 
+0000001640 00000 n 
+0000002624 00000 n 
+0000002750 00000 n 
+trailer
+<< /Size 10 /Root 1 0 R >>
+startxref
+3834
+%%EOF
