@@ -276,8 +276,8 @@ SIMILARITY_THRESHOLD=0.25
 
 ### 1. Clone the Repository
 ```bash
-git clone <repository-url>
-cd RAG
+git clone https://github.com/Anju31-dot/DocuMind-AI.git
+cd DocuMind-AI
 ```
 
 ### 2. Backend Setup
