@@ -1,12 +1,20 @@
 # DocuMind AI — RAG-Based Document Assistant
-> **Software Development Internship Portfolio Project**  
-> A production-ready, full-stack Retrieval-Augmented Generation (RAG) document assistant built with React, Vite, Node.js, Express, and modern vector similarity search.
+> **Software Engineering Internship Portfolio Project**  
+> An end-to-end Retrieval-Augmented Generation (RAG) document assistant built entirely in JavaScript with React, Vite, Node.js, Express, and vector cosine similarity search.
 
 ---
 
 ## 📌 Executive Summary
 
-**DocuMind AI** is an intelligent document assistant that enables conversational question answering over PDF documents with strict grounding and page-level source attribution. Unlike naive LLM wrappers that pass entire files or hallucinate unsupported answers, DocuMind AI implements an end-to-end **Retrieval-Augmented Generation (RAG)** pipeline entirely in JavaScript (Node.js + React), preserving page metadata, calculating vector cosine similarity, and citing exact document excerpts.
+**DocuMind AI** is an interactive, full-stack document assistant that enables conversational question answering over PDF documents with strict context grounding and physical page-level source attribution.
+
+Unlike simple LLM wrappers that pass raw files or hallucinate unsupported facts, DocuMind AI implements a complete **Retrieval-Augmented Generation (RAG)** pipeline:
+1. Extracts text from uploaded PDFs while preserving exact page boundaries.
+2. Segments document text into semantic chunks with overlapping windows.
+3. Generates high-dimensional vector embeddings via API-based models.
+4. Indexes chunk vectors and performs mathematical cosine similarity ranking.
+5. Injects the most relevant excerpts into a constrained prompt that forbids extrapolation.
+6. Returns verified answers accompanied by clickable citation cards citing specific page numbers.
 
 ---
 
@@ -14,83 +22,155 @@
 
 ```mermaid
 flowchart TD
-    subgraph Frontend["Frontend (React + Vite)"]
-        UI[Document Upload & Chat Interface]
-        Settings[Settings & API Key Modal]
-        Inspector[Chunk & Page Inspector]
+    subgraph Frontend["Frontend Client (React 19 + Vite)"]
+        UploadUI["Document Upload & Dropzone"]
+        ChatUI["Interactive Chat Interface"]
+        SettingsUI["Settings & API Key Modal"]
+        InspectorUI["Chunk & Page Inspector Modal"]
     end
 
-    subgraph Backend["Backend (Node.js + Express)"]
-        UploadMW[Multer Upload & Validation Middleware]
-        PDFService[PDF Parser Service (pdf-parse)]
-        Chunker[Recursive Text Chunker with Overlap]
-        EmbedService[Embedding Service (Gemini / OpenAI API)]
-        VectorDB[(In-Memory Vector Store & Cosine Similarity)]
-        RAGPipeline[Grounded RAG Pipeline & Prompt Engineering]
+    subgraph Backend["Backend Server (Node.js + Express)"]
+        UploadMiddleware["Multer Validation (PDF MIME & 15MB limit)"]
+        PDFParser["PDF Parser Service (pdf-parse)"]
+        Chunker["Recursive Text Chunker (overlap & metadata)"]
+        Embedder["Embedding Service (Gemini / OpenAI API)"]
+        VectorDB[("In-Memory Vector Store (Cosine Similarity)")]
+        RAGService["RAG Pipeline & Grounded Prompt Engine"]
     end
 
-    subgraph ExternalAPIs["AI Model APIs"]
-        Gemini[Google Gemini API / text-embedding-004 / gemini-1.5-flash]
-        OpenAI[OpenAI API / text-embedding-3-small / gpt-4o-mini]
+    subgraph ExternalAPIs["AI Model Providers"]
+        GeminiAPI["Google Gemini API\n• text-embedding-004 (768d)\n• gemini-1.5-flash"]
+        OpenAIAPI["OpenAI API\n• text-embedding-3-small (1536d)\n• gpt-4o-mini"]
     end
 
-    UI -->|Upload PDF| UploadMW
-    UploadMW --> PDFService
-    PDFService -->|Page-Aware Text| Chunker
-    Chunker -->|Text Chunks + Page #| EmbedService
-    EmbedService <-->|Batch Embeddings| ExternalAPIs
-    EmbedService -->|Vectors + Metadata| VectorDB
+    UploadUI -->|Multipart Upload| UploadMiddleware
+    UploadMiddleware --> PDFParser
+    PDFParser -->|Page-Structured Text| Chunker
+    Chunker -->|Chunks with Page Metadata| Embedder
+    Embedder <-->|Batch Embeddings| ExternalAPIs
+    Embedder -->|Vectors + Metadata| VectorDB
 
-    UI -->|User Question| RAGPipeline
-    RAGPipeline -->|Embed Query| EmbedService
-    RAGPipeline -->|Top-K Vector Search| VectorDB
-    VectorDB -->|Ranked Excerpts + Page #| RAGPipeline
-    RAGPipeline <-->|Context-Grounded Inference| ExternalAPIs
-    RAGPipeline -->|Answer + Citations| UI
+    ChatUI -->|User Question| RAGService
+    RAGService -->|Embed Query| Embedder
+    RAGService -->|Vector Cosine Search| VectorDB
+    VectorDB -->|Top-K Excerpts + Page #| RAGService
+    RAGService <-->|Constrained Generation| ExternalAPIs
+    RAGService -->|Answer + Citations| ChatUI
 ```
 
 ---
 
-## 🚀 Core Features
+## 🔬 The RAG Pipeline (Step-by-Step)
 
-1. **Page-Aware PDF Parsing**:
-   - Uses `pdf-parse` with custom page render hooks to extract text on a per-page basis, ensuring every chunk retains its exact physical document page number (`pageNumber: 1, 2, ...`).
-2. **Recursive Character Chunking**:
-   - Splits extracted pages into semantically coherent segments using natural break boundaries (`\n\n`, `\n`, sentence endings, commas, spaces).
-   - Configurable chunk size (default: `600` chars) and overlap (default: `120` chars) to eliminate context loss across chunk boundaries.
-3. **API-Based Vector Embeddings**:
-   - Integrates **Google Gemini** (`text-embedding-004` - 768 dimensions) with fallback/alternative support for **OpenAI** (`text-embedding-3-small` - 1536 dimensions).
-   - Efficient batch embedding execution to respect rate limits.
-4. **Cosine Similarity Vector Search**:
-   - Fast, zero-dependency in-memory vector store computing exact cosine similarity:
-     $$\text{Cosine Similarity}(\vec{u}, \vec{v}) = \frac{\vec{u} \cdot \vec{v}}{\|\vec{u}\| \|\vec{v}\|}$$
-   - Retrieves the top-$k$ most relevant chunks with match confidence percentages.
-5. **Strict Grounding & Hallucination Defense**:
-   - The RAG system prompt explicitly forces the LLM to rely **strictly** on retrieved context excerpts.
-   - If the uploaded document lacks sufficient information to answer the question, the assistant explicitly states:
-     `"Insufficient information was found in the uploaded document to answer this question."`
-6. **Detailed Source Citations**:
-   - Every generated answer includes clickable citation cards with exact page numbers, chunk IDs, similarity scores, and expandable text excerpts.
-7. **Chunk Inspector Modal**:
-   - Built-in transparency tool that allows evaluators to inspect every indexed chunk, filter by page, and search chunk text in real time.
-8. **1-Click Sample Document Demo**:
-   - Includes a generated 3-page technical report (`DocuMind_AI_Internship_Report.pdf`) so anyone can test the full pipeline in seconds with zero friction.
+DocuMind AI executes the complete RAG workflow through dedicated, modular backend services:
+
+```
+[Uploaded PDF]
+      │
+      ▼
+1. PDF Text Extraction (Preserves Page Numbers)
+      │
+      ▼
+2. Recursive Character Chunking (~600 chars, 120 char overlap)
+      │
+      ▼
+3. Vector Embedding Generation (Gemini 768d / OpenAI 1536d)
+      │
+      ▼
+4. In-Memory Vector Store Indexing
+      │
+      ├──────────────────────────────┐
+      │                              │
+[User Question]                      │
+      │                              │
+      ▼                              │
+5. Query Vector Embedding            │
+      │                              │
+      ▼                              ▼
+6. Cosine Similarity Retrieval (Top-K Chunks Ranked)
+      │
+      ▼
+7. Grounded LLM Prompt Construction (Strict Context Constraint)
+      │
+      ▼
+8. Answer Generation & Page Citation Attribution
+```
+
+### 1. Page-Aware PDF Extraction (`backend/services/pdfService.js`)
+- Uses `pdf-parse` with a custom `pagerender` hook that hooks into PDF.js page rendering.
+- Captures text page by page, associating each line with its physical document page index (`pageNumber: 1, 2, ...`).
+- Cleans irregular spacing, normalizes line breaks, and prevents loss of document structure.
+
+### 2. Recursive Character Chunking (`backend/services/chunkerService.js`)
+- Segments each page's text into digestible chunks suitable for embedding models.
+- Uses hierarchical natural break boundaries (`\n\n` $\rightarrow$ `\n` $\rightarrow$ `. ` / `? ` / `! ` $\rightarrow$ `; ` / `, ` $\rightarrow$ ` `) to prevent mid-word or mid-sentence cuts.
+- **Configurable Parameters**:
+  - `CHUNK_SIZE`: ~600 characters per chunk (default).
+  - `CHUNK_OVERLAP`: 120 characters sliding window to preserve context across boundaries.
+- **Metadata Attached**: Each chunk stores `{ chunkId, docId, pageNumber, chunkIndex, charCount, tokenEstimate }`.
+
+### 3. Vector Embedding Generation (`backend/services/embeddingService.js`)
+- Converts text chunks into dense, high-dimensional floating-point vectors.
+- Supports batch embedding requests to minimize latency and respect API rate limits.
+- Supports both Google Gemini (`text-embedding-004`) and OpenAI (`text-embedding-3-small`).
+
+### 4. Vector Store Indexing (`backend/services/vectorStore.js`)
+- In-memory vector store that holds the document's chunk text, metadata, and embeddings.
+- Zero external database setup required, ensuring fast in-process retrieval.
+
+### 5. Cosine Similarity Vector Retrieval (`backend/services/vectorStore.js`)
+- When a user submits a question, the backend generates an embedding vector for the query.
+- Calculates mathematical **Cosine Similarity** between the query vector and every chunk vector:
+  $$\text{Cosine Similarity}(\vec{u}, \vec{v}) = \frac{\vec{u} \cdot \vec{v}}{\|\vec{u}\| \|\vec{v}\|} = \frac{\sum_{i=1}^n u_i v_i}{\sqrt{\sum_{i=1}^n u_i^2} \sqrt{\sum_{i=1}^n v_i^2}}$$
+- Ranks chunks in descending similarity order and selects the Top-$k$ results (default $k = 4$).
+- Computes percentage relevance scores for user transparency.
+
+### 6. Grounded LLM Prompt & Answer Generation (`backend/services/ragService.js`)
+- The retrieved excerpts are formatted into a structured prompt.
+- **Strict Guardrail Rules**:
+  - The LLM is instructed to answer **only** using facts present in the excerpts.
+  - If the document lacks sufficient information, the model must output:  
+    `"Insufficient information was found in the uploaded document to answer this question."`
+  - Hallucination and ungrounded extrapolation are strictly prohibited.
+  - Page numbers (e.g., `[Page 2]`) must be cited whenever information is referenced.
+
+### 7. Page Citations & Attributions
+- The frontend renders the answer with a verification badge (`Answer grounded in document excerpts` or an amber `Insufficient information` warning).
+- Interactive citation cards show the exact page number, match confidence percentage, and the underlying excerpt from the source PDF.
+
+---
+
+## 🤖 Supported Model Providers & Configuration
+
+DocuMind AI natively supports two major AI model providers:
+
+| Provider | Embedding Model | Chat / Completion Model | Dimensions | How to Obtain API Key |
+|---|---|---|---|---|
+| **Google Gemini** *(Default & Recommended)* | `text-embedding-004` | `gemini-1.5-flash` | 768 | Free tier available via [Google AI Studio](https://aistudio.google.com/app/apikey) |
+| **OpenAI** *(Alternative)* | `text-embedding-3-small` | `gpt-4o-mini` | 1536 | Available via [OpenAI Platform](https://platform.openai.com/api-keys) |
+
+### Key Configuration Methods:
+1. **Server-Side (`backend/.env`)**: Set `GEMINI_API_KEY` or `OPENAI_API_KEY`. The backend automatically loads and uses these keys.
+2. **In-App Client Settings**: Users can enter their API key directly in the frontend **Settings** modal. The key is stored in browser session storage and forwarded per request through the backend proxy. Secret keys are never logged or exposed.
+3. **Connection Testing**: The Settings modal includes a **"Test Key"** feature calling `POST /api/test-connection` to verify connectivity and dimensionality without uploading a document.
 
 ---
 
 ## 🛠️ Technology Stack
 
-| Layer | Technology | Rationale / Purpose |
-|---|---|---|
-| **Frontend** | React 19 + Vite | Fast HMR, component reusability, optimized bundle size |
-| **Styling** | Vanilla CSS (Variables & Glassmorphism) | High-performance, obsidian dark theme, zero CSS framework bloat |
-| **Icons** | Lucide React | Modern, crisp UI icons for portfolio polish |
-| **Backend** | Node.js (v20+) + Express | Scalable REST API with structured service architecture |
-| **PDF Extraction** | `pdf-parse` | Pure JavaScript PDF text extraction with custom page callbacks |
-| **File Handling** | `multer` | In-memory buffer upload with MIME type and size validation |
-| **Vector Engine** | In-Memory Cosine Similarity | Deterministic, ultra-fast vector retrieval with metadata tracking |
-| **Embedding Model** | Google Gemini (`text-embedding-004`) / OpenAI (`text-embedding-3-small`) | High-dimensional semantic vectors |
-| **LLM Inference** | Gemini 1.5 Flash / GPT-4o Mini | Grounded context reasoning and concise markdown answers |
+| Layer | Technology | Version | Purpose |
+|---|---|---|---|
+| **Frontend Framework** | React | `^19.2.8` | Component-based UI and reactive state |
+| **Build Tool** | Vite | `^8.3.0` | Ultra-fast development server & production bundler |
+| **Styling** | Vanilla CSS | Modern CSS3 | Custom dark obsidian theme, CSS variables, glassmorphism |
+| **Icons** | Lucide React | `^1.55.0` | Crisp icons for status, citations, and navigation |
+| **Backend Runtime** | Node.js | `v20+` | Asynchronous server execution |
+| **HTTP Server** | Express | `^4.21.2` | REST API routing and middleware |
+| **PDF Extraction** | `pdf-parse` | `^1.1.1` | Pure JavaScript PDF text extraction with page hooks |
+| **File Uploads** | `multer` | `^1.4.5-lts.1` | In-memory buffer upload with size & MIME filtering |
+| **Gemini SDK** | `@google/generative-ai` | `^0.24.1` | Official Google Generative AI client |
+| **OpenAI SDK** | `openai` | `^4.86.1` | Official OpenAI client |
+| **Vector Engine** | Custom In-Memory | N/A | Pure JS Cosine Similarity implementation |
 
 ---
 
@@ -100,49 +180,89 @@ flowchart TD
 RAG/
 ├── backend/
 │   ├── config/
-│   │   └── index.js              # Centralized environment configuration
+│   │   └── index.js              # Centralized configuration & environment parser
 │   ├── middleware/
-│   │   ├── upload.js             # Multer upload & PDF validation (15MB limit)
-│   │   └── errorHandler.js       # Global error handler with clean status codes
+│   │   ├── upload.js             # Multer upload validation (PDF only, max 15MB)
+│   │   └── errorHandler.js       # Centralized error handler with status codes
 │   ├── routes/
-│   │   └── api.js                # REST API endpoints (upload, query, chunks, health)
+│   │   └── api.js                # REST API routes (upload, query, chunks, health)
 │   ├── services/
 │   │   ├── pdfService.js         # Page-aware PDF parsing
-│   │   ├── chunkerService.js     # Recursive character text splitting
-│   │   ├── embeddingService.js   # Gemini and OpenAI embedding generator
-│   │   ├── vectorStore.js        # Cosine similarity index & session store
-│   │   └── ragService.js         # RAG pipeline with grounding prompt
+│   │   ├── chunkerService.js     # Recursive character text chunking
+│   │   ├── embeddingService.js   # Batch embedding generation (Gemini & OpenAI)
+│   │   ├── vectorStore.js        # Cosine similarity index and session storage
+│   │   └── ragService.js         # RAG pipeline with grounded prompt constraints
 │   ├── scripts/
-│   │   └── generateSamplePdf.js  # Generator for demo 3-page PDF
-│   ├── .env.example              # Environment variables template
+│   │   └── generateSamplePdf.js  # Generator for demo 3-page technical report
+│   ├── .env.example              # Template with placeholder variables
+│   ├── .env                      # Local environment secrets (git-ignored)
+│   ├── .gitignore                # Backend-specific ignore rules
 │   ├── package.json              # Backend dependencies
 │   └── server.js                 # Express server bootstrap
 │
 ├── frontend/
 │   ├── src/
 │   │   ├── components/
-│   │   │   ├── Header.jsx                # Brand title, status pills, navigation
-│   │   │   ├── UploadZone.jsx            # Drag & drop upload, sample doc button
-│   │   │   ├── ProcessingProgress.jsx    # Real-time multi-stage pipeline status
-│   │   │   ├── DocumentInfoBar.jsx       # Active document badges and actions
-│   │   │   ├── ChatInterface.jsx         # Conversation stream, suggested queries
-│   │   │   ├── MessageItem.jsx           # Markdown message & citations viewer
-│   │   │   ├── SourceCard.jsx            # Page number & similarity confidence card
-│   │   │   ├── SettingsModal.jsx         # API key, provider & parameter settings
-│   │   │   └── ChunkInspectorModal.jsx   # Chunks & page inspector modal
+│   │   │   ├── Header.jsx                # Header, API status, settings & chunk buttons
+│   │   │   ├── UploadZone.jsx            # Drag-and-drop zone, file validation, sample loader
+│   │   │   ├── ProcessingProgress.jsx    # Step-by-step pipeline progress indicator
+│   │   │   ├── DocumentInfoBar.jsx       # Active document metrics and reset action
+│   │   │   ├── ChatInterface.jsx         # Conversation stream, quick query chips, input
+│   │   │   ├── MessageItem.jsx           # Markdown message rendering, grounding alert, copy
+│   │   │   ├── SourceCard.jsx            # Expandable citation card with page number and %
+│   │   │   ├── SettingsModal.jsx         # Model selection, API key test, retrieval params
+│   │   │   └── ChunkInspectorModal.jsx   # Chunks inspector with page filter and search
 │   │   ├── services/
-│   │   │   └── api.js                    # Frontend HTTP client
+│   │   │   └── api.js                    # HTTP client communicating with backend
 │   │   ├── App.jsx                       # Main application state orchestrator
-│   │   ├── index.css                     # Design system tokens and styles
-│   │   └── main.jsx                      # React DOM mounting
+│   │   ├── index.css                     # Complete design system tokens and styling
+│   │   └── main.jsx                      # React mounting entrypoint
 │   ├── index.html                        # HTML entry with Google Fonts
-│   ├── vite.config.js                    # Vite configuration with API proxy
+│   ├── vite.config.js                    # Vite configuration with /api backend proxy
 │   └── package.json                      # Frontend dependencies
 │
 ├── sample_documents/
-│   └── DocuMind_AI_Internship_Report.pdf # Built-in 3-page sample PDF
+│   └── DocuMind_AI_Internship_Report.pdf # Generated 3-page sample PDF for 1-click testing
 ├── .gitignore                            # Root ignore file (.env, node_modules, dist)
 └── README.md                             # Comprehensive project documentation
+```
+
+---
+
+## ⚙️ Environment Variables (`.env.example`)
+
+The backend reads configuration from `backend/.env`. A `.env.example` file is included with placeholder values:
+
+```ini
+# =======================================================
+# DocuMind AI — Backend Environment Configuration
+# =======================================================
+
+# Server Port
+PORT=5000
+
+# Choose default LLM/Embedding provider: "gemini" or "openai"
+DEFAULT_PROVIDER=gemini
+
+# Google Gemini API Key (Recommended - Free tier available from Google AI Studio)
+# Get key here: https://aistudio.google.com/app/apikey
+GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_EMBED_MODEL=text-embedding-004
+GEMINI_CHAT_MODEL=gemini-1.5-flash
+
+# OpenAI API Key (Alternative)
+# Get key here: https://platform.openai.com/api-keys
+OPENAI_API_KEY=your_openai_api_key_here
+OPENAI_EMBED_MODEL=text-embedding-3-small
+OPENAI_CHAT_MODEL=gpt-4o-mini
+
+# Document Chunking Settings
+CHUNK_SIZE=600
+CHUNK_OVERLAP=120
+
+# Vector Search Retrieval
+TOP_K=4
+SIMILARITY_THRESHOLD=0.25
 ```
 
 ---
@@ -150,38 +270,36 @@ RAG/
 ## ⚡ Quick Start Guide
 
 ### Prerequisites
-- [Node.js](https://nodejs.org/) (version 18.0.0 or higher)
-- Free Google Gemini API Key (recommended, from [Google AI Studio](https://aistudio.google.com/app/apikey)) or OpenAI API Key
+- **Node.js** (v18.0.0 or higher)
+- **npm** (v9.0.0 or higher)
+- A **Google Gemini API Key** (free at [Google AI Studio](https://aistudio.google.com/app/apikey)) or an **OpenAI API Key**
 
-### 1. Clone or Open the Repository
+### 1. Clone the Repository
 ```bash
+git clone <repository-url>
 cd RAG
 ```
 
-### 2. Configure Backend Environment
-Navigate to the `backend/` folder and copy `.env.example` to `.env`:
+### 2. Backend Setup
 ```bash
 cd backend
 cp .env.example .env
 ```
-Edit `.env` and add your Gemini API key:
+Open `.env` and paste your Gemini API key:
 ```ini
-PORT=5000
-DEFAULT_PROVIDER=gemini
 GEMINI_API_KEY=your_actual_gemini_api_key_here
 ```
-
-### 3. Install Backend Dependencies & Start Server
+Install dependencies and start the backend server:
 ```bash
 npm install
 npm start
 ```
-The backend server runs on `http://localhost:5000`.
+The backend starts at `http://localhost:5000`.
 
-### 4. Install Frontend Dependencies & Start App
-In a separate terminal window:
+### 3. Frontend Setup
+In a new terminal:
 ```bash
-cd ../frontend
+cd frontend
 npm install
 npm run dev
 ```
@@ -189,118 +307,54 @@ Open your browser and navigate to `http://localhost:5173`.
 
 ---
 
-## 🧪 Testing the Pipeline (1-Click Demo)
-
-1. Open `http://localhost:5173`.
-2. Click **"Load Sample Internship Report (Demo)"** in the left sidebar.
-3. The system will:
-   - Extract text from all 3 pages of the sample report.
-   - Generate semantic chunks.
-   - Compute embeddings.
-   - Index chunks into the vector store.
-4. Click on any of the suggested prompts:
-   - *"What is the core objective of this project?"*
-   - *"Explain the vector search methodology and similarity metric used."*
-   - *"What hallucination guardrails are implemented?"*
-5. Inspect the generated answer:
-   - Notice the green **"Answer grounded in document excerpts"** badge.
-   - Click **"Source References"** to expand the exact page numbers (`Page 1`, `Page 2`, `Page 3`) and see similarity scores!
-6. Test hallucination defense:
-   - Ask an off-topic question: *"What is the recipe for chocolate cake?"*
-   - Notice the amber badge and clear response:  
-     `"Insufficient information was found in the uploaded document to answer this question."`
-
----
-
 ## 📡 REST API Reference
 
-### 1. `GET /api/health`
-Checks server status and configured provider keys.
-- **Response**:
-```json
-{
-  "status": "healthy",
-  "configuredProviders": { "gemini": true, "openai": false, "default": "gemini" },
-  "activeDocument": { "filename": "report.pdf", "pageCount": 3, "chunkCount": 6 }
-}
-```
+All backend endpoints are prefixed with `/api`.
 
-### 2. `POST /api/test-connection`
-Validates an API key against the provider.
-- **Body**: `{ "provider": "gemini", "apiKey": "..." }`
-- **Response**: `{ "success": true, "dimensions": 768, "message": "Successfully connected..." }`
-
-### 3. `POST /api/upload`
-Uploads and indexes a PDF document.
-- **Form Data**:
-  - `file`: PDF binary file
-  - `provider`: `"gemini"` or `"openai"`
-  - `chunkSize`: `600`
-  - `chunkOverlap`: `120`
-- **Response**:
-```json
-{
-  "success": true,
-  "message": "Document successfully parsed, chunked, and indexed in vector store.",
-  "document": {
-    "docId": "doc_1728751234567",
-    "filename": "DocuMind_AI_Internship_Report.pdf",
-    "pageCount": 3,
-    "chunkCount": 6,
-    "provider": "gemini"
-  }
-}
-```
-
-### 4. `POST /api/query`
-Executes vector retrieval and context-grounded LLM generation.
-- **Body**:
-```json
-{
-  "question": "What similarity metric is used for vector retrieval?",
-  "provider": "gemini",
-  "topK": 4
-}
-```
-- **Response**:
-```json
-{
-  "success": true,
-  "answer": "The vector store calculates **Cosine Similarity** between the user question vector and all document chunk vectors [Page 2].",
-  "isSupported": true,
-  "sources": [
-    {
-      "chunkId": "doc_1_p2_c1",
-      "pageNumber": 2,
-      "similarity": 0.892,
-      "relevancePercent": 89,
-      "text": "Vector Storage: Embeddings are indexed in an in-memory vector store..."
-    }
-  ],
-  "timingMs": 412
-}
-```
-
-### 5. `GET /api/chunks`
-Returns all indexed chunks for transparency inspection.
-
-### 6. `DELETE /api/document`
-Clears the active document and resets the vector store.
+| Method | Endpoint | Description | Request Body / Params | Response |
+|---|---|---|---|---|
+| `GET` | `/` | Root server status | None | `{ "project": "DocuMind AI", "status": "online" }` |
+| `GET` | `/api/health` | Health check & provider status | None | Status, active provider config, loaded document summary |
+| `GET` | `/api/sample-document` | Streams the demo 3-page PDF | None | PDF binary stream |
+| `POST` | `/api/test-connection` | Validates API key and models | `{ provider, apiKey }` | `{ success: true, dimensions: 768, message: "..." }` |
+| `POST` | `/api/upload` | Uploads, chunks, embeds & indexes PDF | Multipart `file`, optional `provider, apiKey, chunkSize, chunkOverlap` | Indexed document summary (docId, pages, chunks count) |
+| `POST` | `/api/query` | RAG search & grounded LLM generation | `{ question, provider, apiKey, topK }` | `{ answer, isSupported, sources, timingMs }` |
+| `GET` | `/api/document` | Returns active document metadata | None | Document info and vector store metrics |
+| `GET` | `/api/chunks` | Inspects stored chunks | Query params: `offset, limit` | Paginated array of chunks with page numbers and text |
+| `DELETE` | `/api/document` | Clears active document from memory | None | `{ success: true, message: "..." }` |
 
 ---
 
-## 🔒 Security & Code Quality Standards
+## 🧪 Verified Behaviors & Manual Testing
 
-- **Zero Secret Exposure**: Secret API keys are handled securely via backend environment variables (`.env`) and never embedded in frontend code.
-- **Safe File Uploads**: `multer` validates MIME types (`application/pdf`) and enforces a strict 15MB file size limit to prevent Denial-of-Service attacks.
-- **Strict Separation of Concerns**: Clean modular architecture dividing business logic (`services/`), HTTP routing (`routes/`), middleware (`middleware/`), and presentation (`components/`).
-- **Real RAG Implementation**: No fake or mocked responses; the pipeline computes real vector embeddings, performs mathematical cosine similarity scoring, and queries the LLM API with strict grounding constraints.
-- **Git Hygiene**: Comprehensive `.gitignore` protecting `.env`, `node_modules`, `dist`, logs, and temporary files.
+The following capabilities have been **empirically verified** through end-to-end testing of the working application. *(Note: Verified via manual testing and API test scripts; no automated CI/CD pipeline or cloud deployment is claimed.)*
+
+| Test Case | Verified Behavior |
+|---|---|
+| **PDF Page-Aware Extraction** | Uploaded the 3-page sample PDF. Verified all 3 pages were extracted with intact physical page numbers (`Page 1`, `Page 2`, `Page 3`). |
+| **Recursive Chunking & Overlap** | Verified that extracted text was split into 6 semantic chunks of $\le 600$ characters with 120-character overlapping windows without broken words. |
+| **Vector Similarity Calculation** | Verified cosine similarity algorithm ranks chunks by semantic relevance and accurately computes percentage confidence scores. |
+| **File Validation & Limits** | Verified that non-PDF files are rejected with a 400 Bad Request and that files exceeding 15MB trigger a 413 Payload Too Large error. |
+| **Grounded QA & Citations** | Asked targeted questions (e.g., *"What is the core objective of this project?"*). Verified the response cited `[Page 1]` and displayed expandable citation cards showing the exact source snippet. |
+| **Insufficient Information Defense** | Asked out-of-domain questions (e.g., *"What is the recipe for chocolate cake?"*). Verified the LLM responded with *"Insufficient information was found in the uploaded document..."* accompanied by the UI amber warning badge. |
+| **API Key Testing** | Verified `POST /api/test-connection` correctly validates Gemini and OpenAI credentials and returns vector dimensions. |
+| **Frontend Production Build** | Executed `npm run build` in `frontend/`. Verified Vite successfully bundles the app (`✓ built in ~2.3s`, 0 errors). |
+| **Reverse Proxy Communication** | Verified Vite dev server proxy seamlessly routes `/api/*` requests to the Express backend on port 5000. |
 
 ---
 
-## 💡 Internship Portfolio Highlights
+## 🔒 Security & Repository Hygiene
 
-1. **Full-Stack Competency**: Demonstrates seamless integration between a modern React/Vite frontend and an Express REST API.
-2. **AI Engineering Principles**: Highlights hands-on experience with Retrieval-Augmented Generation, chunking tradeoffs (chunk size vs overlap), high-dimensional vector embeddings, and prompt defense against hallucination.
-3. **UI/UX Attention to Detail**: Modern dark glassmorphism aesthetic, responsive design, citation drawer, chunk inspection tools, and instant 1-click testability.
+- **Secret Key Protection**: API keys are loaded via `backend/.env` on the server and are **never** committed to Git or exposed in client bundles.
+- **Git Ignored Files**: Both root `.gitignore` and `backend/.gitignore` strictly ignore `.env`, `.env.local`, `node_modules/`, `dist/`, and log files.
+- **Placeholder Example**: `backend/.env.example` contains only placeholder values (`your_gemini_api_key_here`).
+- **In-Memory File Processing**: Uploaded PDF buffers are handled directly in memory (`multer.memoryStorage()`) without persisting unvetted files to disk.
+- **Zero Hardcoded / Fake Answers**: All answers are generated dynamically by the live RAG pipeline.
+
+---
+
+## 💼 Internship Portfolio Highlights
+
+1. **Full-Stack Proficiency**: Combines a modern React 19 / Vite client with a modular Node.js / Express backend.
+2. **AI Engineering Principles**: Hands-on implementation of chunking strategies, vector embeddings, mathematical cosine similarity, and hallucination guardrails.
+3. **Engineering Transparency**: Includes a Chunk Inspector modal and 1-click sample document loader so reviewers can inspect the inner mechanics of the RAG pipeline with zero friction.
