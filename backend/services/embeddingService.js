@@ -93,7 +93,7 @@ async function generateBatchEmbeddings(texts, options = {}) {
         }
       } catch (batchErr) {
         // Fallback to sequential individual embeds if batch fails
-        console.warn(`[EmbeddingService] Batch embed warning, falling back to sequential for batch ${i}: ${batchErr.message}`);
+        console.warn(`[EmbeddingService] Batch embedding failed for batch ${i}; falling back to sequential processing.`);
         for (const singleText of chunkBatch) {
           const res = await model.embedContent(singleText);
           allEmbeddings.push(res.embedding.values);

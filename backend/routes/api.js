@@ -7,6 +7,20 @@ const chunkerService = require('../services/chunkerService');
 const embeddingService = require('../services/embeddingService');
 const vectorStore = require('../services/vectorStore');
 const ragService = require('../services/ragService');
+const {
+  isPdfBuffer,
+  validateApiKey,
+  validateProvider,
+  validateQueryInput,
+  validateUploadInput
+} = require('../middleware/validation');
+
+function requestError(statusCode, message) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  error.publicMessage = message;
+  return error;
+}
 
 /**
  * Serve the generated sample PDF for quick 1-click portfolio demo
@@ -52,15 +66,18 @@ router.get('/health', (req, res) => {
 /**
  * Test API Key and connection
  */
-router.post('/test-connection', async (req, res) => {
-  const provider = (req.body.provider || config.DEFAULT_PROVIDER || 'gemini').toLowerCase();
-  const apiKey = req.body.apiKey || (provider === 'gemini' ? config.GEMINI_API_KEY : config.OPENAI_API_KEY);
+router.post('/test-connection', async (req, res, next) => {
+  let provider;
+  let apiKey;
+  try {
+    provider = validateProvider(req.body?.provider, config.DEFAULT_PROVIDER || 'gemini');
+    apiKey = validateApiKey(req.body?.apiKey) || (provider === 'gemini' ? config.GEMINI_API_KEY : config.OPENAI_API_KEY);
+  } catch (error) {
+    return next(error);
+  }
 
   if (!apiKey) {
-    return res.status(400).json({
-      success: false,
-      error: `No API key provided for ${provider.toUpperCase()}. Please configure it in .env or enter it in Settings.`
-    });
+    return next(requestError(400, `No API key is configured for ${provider}.`));
   }
 
   try {
@@ -72,12 +89,8 @@ router.post('/test-connection', async (req, res) => {
       dimensions: testVector.length,
       message: `Successfully connected to ${provider === 'gemini' ? 'Google Gemini' : 'OpenAI'} API! (Vector dims: ${testVector.length})`
     });
-  } catch (err) {
-    return res.status(400).json({
-      success: false,
-      provider,
-      error: err.message
-    });
+  } catch (error) {
+    return next(error);
   }
 });
 
@@ -88,29 +101,32 @@ router.post('/test-connection', async (req, res) => {
 router.post('/upload', upload.single('file'), async (req, res, next) => {
   try {
     if (!req.file) {
-      return res.status(400).json({
-        success: false,
-        error: 'No PDF file was uploaded. Please attach a valid PDF document.'
-      });
+      return next(requestError(400, 'No PDF file was uploaded. Please attach a valid PDF document.'));
     }
 
-    const provider = (req.body.provider || config.DEFAULT_PROVIDER || 'gemini').toLowerCase();
-    const apiKey = req.body.apiKey || (provider === 'gemini' ? config.GEMINI_API_KEY : config.OPENAI_API_KEY);
+    const options = validateUploadInput(req.body, {
+      provider: config.DEFAULT_PROVIDER || 'gemini',
+      chunkSize: config.CHUNK_SIZE,
+      chunkOverlap: config.CHUNK_OVERLAP
+    });
+    const { provider, chunkSize, chunkOverlap } = options;
+    const apiKey = options.apiKey || (provider === 'gemini' ? config.GEMINI_API_KEY : config.OPENAI_API_KEY);
+
+    if (!isPdfBuffer(req.file.buffer)) {
+      return next(requestError(400, 'Uploaded file content is not a valid PDF.'));
+    }
 
     if (!apiKey) {
-      return res.status(400).json({
-        success: false,
-        error: `API key for provider "${provider}" is not configured. Please add ${provider.toUpperCase()}_API_KEY in backend/.env or enter it in Settings.`
-      });
+      return next(requestError(400, `No API key is configured for ${provider}.`));
     }
 
-    const chunkSize = parseInt(req.body.chunkSize, 10) || config.CHUNK_SIZE;
-    const chunkOverlap = parseInt(req.body.chunkOverlap, 10) || config.CHUNK_OVERLAP;
-
-    console.log(`[Upload] Processing file "${req.file.originalname}" (${(req.file.size / 1024).toFixed(1)} KB) using provider "${provider}"`);
-
     // 1. Extract text and preserve page numbers
-    const extractionResult = await pdfService.extractTextWithPages(req.file.buffer);
+    let extractionResult;
+    try {
+      extractionResult = await pdfService.extractTextWithPages(req.file.buffer);
+    } catch (error) {
+      return next(requestError(400, 'Unable to parse the uploaded PDF. Ensure it is a valid, unencrypted PDF document.'));
+    }
 
     if (!extractionResult.pages || extractionResult.pages.length === 0 || !extractionResult.fullText.trim()) {
       return res.status(422).json({
@@ -133,10 +149,7 @@ router.post('/upload', upload.single('file'), async (req, res, next) => {
       });
     }
 
-    console.log(`[Upload] Document extracted: ${extractionResult.numPages} pages, created ${chunks.length} chunks.`);
-
     // 3. Generate embeddings for all chunks in batches
-    console.log(`[Upload] Generating embeddings for ${chunks.length} chunks via ${provider}...`);
     const chunkTexts = chunks.map(c => c.text);
     const embeddings = await embeddingService.generateBatchEmbeddings(chunkTexts, {
       provider,
@@ -182,7 +195,6 @@ router.post('/upload', upload.single('file'), async (req, res, next) => {
       }
     });
   } catch (error) {
-    console.error('[Upload Error]', error);
     next(error);
   }
 });
@@ -192,30 +204,22 @@ router.post('/upload', upload.single('file'), async (req, res, next) => {
  */
 router.post('/query', async (req, res, next) => {
   try {
-    const { question, provider, apiKey, topK } = req.body;
-
-    if (!question || typeof question !== 'string' || !question.trim()) {
-      return res.status(400).json({
-        success: false,
-        error: 'Please provide a non-empty question string.'
-      });
-    }
-
     const activeDoc = vectorStore.getActiveDocument();
-    if (!activeDoc) {
-      return res.status(400).json({
-        success: false,
-        error: 'No active document indexed. Please upload a PDF before asking questions.'
-      });
-    }
+    const { question, provider, apiKey, topK } = validateQueryInput(
+      req.body,
+      activeDoc?.provider || config.DEFAULT_PROVIDER,
+      config.TOP_K
+    );
 
-    console.log(`[Query] Question: "${question.substring(0, 80)}..."`);
+    if (!activeDoc) {
+      return next(requestError(400, 'No active document indexed. Please upload a PDF before asking questions.'));
+    }
 
     const result = await ragService.answerQuestion({
       question,
-      provider: provider || activeDoc.provider,
+      provider,
       apiKey,
-      topK: topK ? parseInt(topK, 10) : config.TOP_K
+      topK
     });
 
     return res.status(200).json({
@@ -223,7 +227,6 @@ router.post('/query', async (req, res, next) => {
       ...result
     });
   } catch (error) {
-    console.error('[Query Error]', error);
     next(error);
   }
 });

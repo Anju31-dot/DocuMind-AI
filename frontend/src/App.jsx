@@ -15,6 +15,35 @@ import {
 } from './services/api';
 import { Cpu, ShieldCheck, Database, Layers } from 'lucide-react';
 
+const SETTINGS_STORAGE_KEY = 'documind_settings';
+const DEFAULT_SETTINGS = {
+  provider: 'gemini',
+  apiKey: '',
+  topK: 4,
+  chunkSize: 600,
+  chunkOverlap: 120
+};
+
+function withoutApiKey(settings) {
+  return Object.fromEntries(Object.entries(settings).filter(([key]) => key !== 'apiKey'));
+}
+
+function loadSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) || 'null');
+    const settings = { ...DEFAULT_SETTINGS, ...saved, apiKey: '' };
+    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(withoutApiKey(settings)));
+    return settings;
+  } catch {
+    try {
+      localStorage.removeItem(SETTINGS_STORAGE_KEY);
+    } catch {
+      // Storage may be unavailable; settings remain in memory for this session.
+    }
+    return DEFAULT_SETTINGS;
+  }
+}
+
 export default function App() {
   const [backendOnline, setBackendOnline] = useState(false);
   const [serverStatus, setServerStatus] = useState(null);
@@ -31,19 +60,7 @@ export default function App() {
   const [isChunksOpen, setIsChunksOpen] = useState(false);
   const [toast, setToast] = useState(null);
 
-  const [settings, setSettings] = useState(() => {
-    try {
-      const saved = localStorage.getItem('documind_settings');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {}
-    return {
-      provider: 'gemini',
-      apiKey: '',
-      topK: 4,
-      chunkSize: 600,
-      chunkOverlap: 120
-    };
-  });
+  const [settings, setSettings] = useState(loadSettings);
 
   // Check health and existing document on mount
   useEffect(() => {
@@ -77,7 +94,12 @@ export default function App() {
 
   const handleSaveSettings = (newSettings) => {
     setSettings(newSettings);
-    localStorage.setItem('documind_settings', JSON.stringify(newSettings));
+    try {
+      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(withoutApiKey(newSettings)));
+    } catch {
+      showToast('Settings saved for this session; browser storage is unavailable.', 'info');
+      return;
+    }
     showToast('Settings updated successfully.', 'success');
   };
 
@@ -168,7 +190,7 @@ export default function App() {
 
     try {
       const response = await queryDocument(questionText, {
-        provider: settings.provider || activeDoc.provider,
+        provider: activeDoc.provider,
         apiKey: settings.apiKey,
         topK: settings.topK
       });
@@ -263,6 +285,7 @@ export default function App() {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         settings={settings}
+        activeDoc={activeDoc}
         onSaveSettings={handleSaveSettings}
         serverStatus={serverStatus}
       />

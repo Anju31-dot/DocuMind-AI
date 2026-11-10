@@ -151,7 +151,7 @@ DocuMind AI natively supports two major AI model providers:
 
 ### Key Configuration Methods:
 1. **Server-Side (`backend/.env`)**: Set `GEMINI_API_KEY` or `OPENAI_API_KEY`. The backend automatically loads and uses these keys.
-2. **In-App Client Settings**: Users can enter their API key directly in the frontend **Settings** modal. The key is stored in browser session storage and forwarded per request through the backend proxy. Secret keys are never logged or exposed.
+2. **In-App Client Settings**: Users can enter their API key directly in the frontend **Settings** modal. The key remains in browser memory for the current session and is forwarded per request to the backend and selected AI provider. It is not persisted in browser storage.
 3. **Connection Testing**: The Settings modal includes a **"Test Key"** feature calling `POST /api/test-connection` to verify connectivity and dimensionality without uploading a document.
 
 ---
@@ -179,10 +179,12 @@ DocuMind AI natively supports two major AI model providers:
 ```
 RAG/
 ├── backend/
+│   ├── app.js                    # Express app, CORS allowlist, and request logging
 │   ├── config/
 │   │   └── index.js              # Centralized configuration & environment parser
 │   ├── middleware/
-│   │   ├── upload.js             # Multer upload validation (PDF only, max 15MB)
+│   │   ├── upload.js             # Multer in-memory upload with a 15MB limit
+│   │   ├── validation.js         # Request, provider, parameter, and PDF-content validation
 │   │   └── errorHandler.js       # Centralized error handler with status codes
 │   ├── routes/
 │   │   └── api.js                # REST API routes (upload, query, chunks, health)
@@ -198,7 +200,7 @@ RAG/
 │   ├── .env                      # Local environment secrets (git-ignored)
 │   ├── .gitignore                # Backend-specific ignore rules
 │   ├── package.json              # Backend dependencies
-│   └── server.js                 # Express server bootstrap
+│   └── server.js                 # HTTP server startup
 │
 ├── frontend/
 │   ├── src/
@@ -263,6 +265,9 @@ CHUNK_OVERLAP=120
 # Vector Search Retrieval
 TOP_K=4
 SIMILARITY_THRESHOLD=0.25
+
+# Comma-separated allowed browser origins (local Vite origins shown)
+ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 ```
 
 ---
@@ -345,7 +350,7 @@ The following capabilities have been **empirically verified** through end-to-end
 
 ## 🔒 Security & Repository Hygiene
 
-- **Secret Key Protection**: API keys are loaded via `backend/.env` on the server and are **never** committed to Git or exposed in client bundles.
+- **API Key Handling**: Backend environment keys stay server-side. Keys entered in the UI remain in browser memory for the current session, are not persisted in browser storage, and are sent to the backend and selected AI provider when needed. Keys are not included in client bundles.
 - **Git Ignored Files**: Both root `.gitignore` and `backend/.gitignore` strictly ignore `.env`, `.env.local`, `node_modules/`, `dist/`, and log files.
 - **Placeholder Example**: `backend/.env.example` contains only placeholder values (`your_gemini_api_key_here`).
 - **In-Memory File Processing**: Uploaded PDF buffers are handled directly in memory (`multer.memoryStorage()`) without persisting unvetted files to disk.

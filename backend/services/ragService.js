@@ -24,13 +24,25 @@ async function answerQuestion({ question, provider, apiKey, topK = config.TOP_K 
     throw new Error('No document has been uploaded or indexed yet. Please upload a PDF first.');
   }
 
-  const selectedProvider = (provider || activeDoc.provider || config.DEFAULT_PROVIDER || 'gemini').toLowerCase();
+  const documentProvider = (activeDoc.provider || 'gemini').toLowerCase();
+  const selectedProvider = (provider || documentProvider || config.DEFAULT_PROVIDER || 'gemini').toLowerCase();
+
+  if (selectedProvider !== documentProvider) {
+    const error = new Error(
+      `The active document was indexed with ${documentProvider}. Clear and re-index the document before switching to ${selectedProvider}.`
+    );
+    error.statusCode = 409;
+    error.publicMessage = error.message;
+    throw error;
+  }
+
   const effectiveKey = apiKey || (selectedProvider === 'gemini' ? config.GEMINI_API_KEY : config.OPENAI_API_KEY);
 
   if (!effectiveKey) {
-    throw new Error(
-      `API key missing for provider "${selectedProvider}". Please configure ${selectedProvider.toUpperCase()}_API_KEY in backend .env or provide it in the settings modal.`
-    );
+    const error = new Error(`No API key is configured for ${selectedProvider}.`);
+    error.statusCode = 400;
+    error.publicMessage = error.message;
+    throw error;
   }
 
   // 1. Generate Query Embedding
@@ -40,12 +52,12 @@ async function answerQuestion({ question, provider, apiKey, topK = config.TOP_K 
   });
 
   // 2. Retrieve top-k most similar chunks
-  const retrievedChunks = vectorStore.search(queryEmbedding, topK, 0.0);
+  const retrievedChunks = vectorStore.search(queryEmbedding, topK, config.SIMILARITY_THRESHOLD);
 
   // If vector store returned no chunks
   if (retrievedChunks.length === 0) {
     return {
-      answer: 'Insufficient information was found in the uploaded document to answer this question.',
+      answer: 'No sufficiently relevant information was found in the uploaded document to answer this question.',
       isSupported: false,
       sources: [],
       document: activeDoc,

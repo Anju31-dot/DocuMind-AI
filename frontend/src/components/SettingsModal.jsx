@@ -6,6 +6,7 @@ export default function SettingsModal({
   isOpen,
   onClose,
   settings,
+  activeDoc,
   onSaveSettings,
   serverStatus
 }) {
@@ -16,6 +17,7 @@ export default function SettingsModal({
   const [chunkOverlap, setChunkOverlap] = useState(settings.chunkOverlap || 120);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
+  const selectedProvider = activeDoc?.provider || provider;
 
   if (!isOpen) return null;
 
@@ -24,7 +26,7 @@ export default function SettingsModal({
     setTestResult(null);
     try {
       const res = await testConnection({
-        provider,
+        provider: selectedProvider,
         apiKey: apiKey.trim()
       });
       setTestResult({ success: true, message: res.message });
@@ -37,7 +39,7 @@ export default function SettingsModal({
 
   const handleSave = () => {
     onSaveSettings({
-      provider,
+      provider: selectedProvider,
       apiKey: apiKey.trim(),
       topK: parseInt(topK, 10),
       chunkSize: parseInt(chunkSize, 10),
@@ -71,23 +73,26 @@ export default function SettingsModal({
             <select
               id="select-provider"
               className="form-select"
-              value={provider}
+              value={selectedProvider}
               onChange={(e) => setProvider(e.target.value)}
+              disabled={Boolean(activeDoc)}
             >
               <option value="gemini">Google Gemini (text-embedding-004 & gemini-1.5-flash)</option>
               <option value="openai">OpenAI (text-embedding-3-small & gpt-4o-mini)</option>
             </select>
             <span className="form-helper">
-              Google Gemini offers generous free tier access via Google AI Studio.
+              {activeDoc
+                ? `This document is indexed with ${selectedProvider}. Clear and re-index it before switching providers.`
+                : 'Google Gemini offers generous free tier access via Google AI Studio.'}
             </span>
           </div>
 
           {/* API Key */}
           <div className="form-group">
             <label className="form-label" htmlFor="input-api-key" style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>API Key ({provider.toUpperCase()})</span>
-              <span style={{ color: (provider === 'gemini' ? hasServerGemini : hasServerOpenAI) ? 'var(--success)' : 'var(--text-subtle)' }}>
-                {(provider === 'gemini' ? hasServerGemini : hasServerOpenAI)
+              <span>API Key ({selectedProvider.toUpperCase()})</span>
+              <span style={{ color: (selectedProvider === 'gemini' ? hasServerGemini : hasServerOpenAI) ? 'var(--success)' : 'var(--text-subtle)' }}>
+                {(selectedProvider === 'gemini' ? hasServerGemini : hasServerOpenAI)
                   ? '✓ Backend .env configured'
                   : 'Optional if set in backend/.env'}
               </span>
@@ -99,9 +104,9 @@ export default function SettingsModal({
                 className="form-input"
                 style={{ width: '100%' }}
                 placeholder={
-                  (provider === 'gemini' ? hasServerGemini : hasServerOpenAI)
+                  (selectedProvider === 'gemini' ? hasServerGemini : hasServerOpenAI)
                     ? '•••••••••••••••••••• (using backend .env key)'
-                    : `Enter your ${provider.toUpperCase()}_API_KEY here`
+                    : `Enter your ${selectedProvider.toUpperCase()}_API_KEY here`
                 }
                 value={apiKey}
                 onChange={(e) => {
@@ -112,7 +117,7 @@ export default function SettingsModal({
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.25rem' }}>
               <span className="form-helper">
-                {provider === 'gemini' ? (
+                {selectedProvider === 'gemini' ? (
                   <a 
                     href="https://aistudio.google.com/app/apikey" 
                     target="_blank" 
@@ -232,7 +237,7 @@ export default function SettingsModal({
           }}>
             <Info size={15} style={{ flexShrink: 0, marginTop: '2px' }} />
             <span>
-              API keys are never stored on the web or exposed to third parties. They are sent securely to the local backend proxy.
+              API keys stay in memory for this browser session and are not saved in browser storage. Requests send the key to this backend, which uses it with the selected AI provider.
             </span>
           </div>
         </div>

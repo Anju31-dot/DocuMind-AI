@@ -47,6 +47,16 @@ class VectorStore {
    * @param {Array<object>} chunks - Chunks with text and embedding arrays
    */
   loadDocument(docMetadata, chunks) {
+    const embeddingDimensions = chunks[0]?.embedding?.length;
+    if (!embeddingDimensions || chunks.some(chunk =>
+      !Array.isArray(chunk.embedding) || chunk.embedding.length !== embeddingDimensions
+    )) {
+      const error = new Error('Document chunks have missing or inconsistent embedding dimensions.');
+      error.statusCode = 422;
+      error.publicMessage = error.message;
+      throw error;
+    }
+
     this.activeDocument = {
       docId: docMetadata.docId,
       filename: docMetadata.filename,
@@ -83,6 +93,16 @@ class VectorStore {
   search(queryEmbedding, topK = 4, minThreshold = 0.0) {
     if (!queryEmbedding || this.chunks.length === 0) {
       return [];
+    }
+
+    const expectedDimensions = this.chunks[0].embedding.length;
+    if (queryEmbedding.length !== expectedDimensions) {
+      const error = new Error(
+        `Query embedding dimension mismatch: expected ${expectedDimensions}, received ${queryEmbedding.length}. Re-index the document with the selected embedding provider.`
+      );
+      error.statusCode = 409;
+      error.publicMessage = error.message;
+      throw error;
     }
 
     // Compute similarity for all indexed chunks

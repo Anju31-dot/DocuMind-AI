@@ -35,7 +35,7 @@ function createSamplePdf() {
       paragraphs: [
         "Hallucination Guardrails: If retrieved chunks do not contain enough facts to answer a question, the assistant explicitly states: Insufficient information was found in the uploaded document.",
         "Source Citation: Each response includes clickable citation cards with exact page numbers and similarity confidence scores.",
-        "Security Standards: Secret API keys are stored strictly in backend environment variables and never exposed to the frontend browser.",
+        "API Key Handling: Keys entered in Settings remain in browser memory for the session and are sent to the backend and selected AI provider. Backend environment keys remain server-side.",
         "Performance Benchmarks: Average document processing time is under 1.5 seconds for typical 10-page documents.",
         "Internship Conclusion: The project demonstrates full-stack proficiency, prompt engineering, vector search implementation, and clean architectural design."
       ]

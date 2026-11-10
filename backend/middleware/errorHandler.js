@@ -2,8 +2,6 @@
  * Global Error Handling Middleware
  */
 function errorHandler(err, req, res, next) {
-  console.error('[Error Details]:', err);
-
   // Multer specific errors
   if (err.code === 'LIMIT_FILE_SIZE') {
     return res.status(413).json({
@@ -12,19 +10,39 @@ function errorHandler(err, req, res, next) {
     });
   }
 
-  // API Key / Auth errors
-  const errMessage = err.message || 'An unexpected server error occurred.';
-  let statusCode = err.statusCode || (err.status ? err.status : 500);
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({
+      success: false,
+      error: 'Request body is too large.'
+    });
+  }
 
-  if (errMessage.includes('API_KEY_INVALID') || errMessage.includes('Incorrect API key') || errMessage.includes('API key not valid')) {
-    statusCode = 401;
-  } else if (errMessage.includes('quota') || errMessage.includes('RESOURCE_EXHAUSTED')) {
-    statusCode = 429;
+  if (err.type === 'entity.parse.failed') {
+    return res.status(400).json({
+      success: false,
+      error: 'Request body contains invalid JSON.'
+    });
+  }
+
+  const statusCode = Number.isInteger(err.statusCode) && err.publicMessage
+    ? err.statusCode
+    : 500;
+  const message = err.publicMessage || 'An unexpected error occurred. Please try again later.';
+
+  if (statusCode >= 500) {
+    console.error('[Error]', {
+      method: req.method,
+      path: req.path,
+      statusCode,
+      errorCode: typeof err.code === 'string' && /^[A-Z0-9_]{1,40}$/.test(err.code)
+        ? err.code
+        : 'UNCLASSIFIED'
+    });
   }
 
   res.status(statusCode).json({
     success: false,
-    error: errMessage,
+    error: message,
     statusCode
   });
 }
