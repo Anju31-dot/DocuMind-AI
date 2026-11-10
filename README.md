@@ -34,7 +34,9 @@ flowchart TD
         PDFParser["PDF Parser Service (pdf-parse)"]
         Chunker["Recursive Text Chunker (overlap & metadata)"]
         Embedder["Embedding Service (Gemini / OpenAI API)"]
-        VectorDB[("In-Memory Vector Store (Cosine Similarity)")]
+        VectorDB[("In-Memory Vector Store (Cosine + BM25)")]
+        HybridSearch["Hybrid Retrieval & RRF"]
+        Reranker["Provider LLM Reranker"]
         RAGService["RAG Pipeline & Grounded Prompt Engine"]
     end
 
@@ -52,8 +54,10 @@ flowchart TD
 
     ChatUI -->|User Question| RAGService
     RAGService -->|Embed Query| Embedder
-    RAGService -->|Vector Cosine Search| VectorDB
-    VectorDB -->|Top-K Excerpts + Page #| RAGService
+    RAGService -->|Query Embedding + Terms| VectorDB
+    VectorDB -->|Semantic + BM25 Candidates| HybridSearch
+    HybridSearch -->|Fused Shortlist| Reranker
+    Reranker -->|Final Top-K + Page Metadata| RAGService
     RAGService <-->|Constrained Generation| ExternalAPIs
     RAGService -->|Answer + Citations| ChatUI
 ```
@@ -87,13 +91,16 @@ DocuMind AI executes the complete RAG workflow through dedicated, modular backen
 5. Query Vector Embedding            │
       │                              │
       ▼                              ▼
-6. Cosine Similarity Retrieval (Top-K Chunks Ranked)
+6. Hybrid Retrieval (Cosine Similarity + BM25)
       │
       ▼
-7. Grounded LLM Prompt Construction (Strict Context Constraint)
+7. Reciprocal Rank Fusion (RRF)
       │
       ▼
-8. Answer Generation & Page Citation Attribution
+8. LLM Reranking of the Bounded Candidate Shortlist
+      │
+      ▼
+9. Grounded Answer Generation & Page Citation Attribution
 ```
 
 ### 1. Page-Aware PDF Extraction (`backend/services/pdfService.js`)
@@ -115,18 +122,23 @@ DocuMind AI executes the complete RAG workflow through dedicated, modular backen
 - Supports both Google Gemini (`text-embedding-004`) and OpenAI (`text-embedding-3-small`).
 
 ### 4. Vector Store Indexing (`backend/services/vectorStore.js`)
-- In-memory vector store that holds the document's chunk text, metadata, and embeddings.
+- In-memory vector store that holds the document's chunk text, page metadata, embeddings, and a BM25 term index.
 - Zero external database setup required, ensuring fast in-process retrieval.
 
-### 5. Cosine Similarity Vector Retrieval (`backend/services/vectorStore.js`)
-- When a user submits a question, the backend generates an embedding vector for the query.
-- Calculates mathematical **Cosine Similarity** between the query vector and every chunk vector:
+### 5. Hybrid Retrieval and Rank Fusion (`backend/services/retrievalService.js`, `backend/services/vectorStore.js`)
+- Each query is searched semantically with cosine similarity and lexically with BM25. Semantic results continue to honor `SIMILARITY_THRESHOLD`; exact-term BM25 candidates can contribute independently.
+- Reciprocal Rank Fusion (RRF) combines the separate result rankings without comparing their differently scaled raw scores.
+- The candidate pool is bounded to at most 32 chunks (up to four times the requested `topK`).
+- Cosine similarity is computed between the query vector and each indexed chunk vector:
   $$\text{Cosine Similarity}(\vec{u}, \vec{v}) = \frac{\vec{u} \cdot \vec{v}}{\|\vec{u}\| \|\vec{v}\|} = \frac{\sum_{i=1}^n u_i v_i}{\sqrt{\sum_{i=1}^n u_i^2} \sqrt{\sum_{i=1}^n v_i^2}}$$
-- Ranks chunks in descending similarity order and selects the Top-$k$ results (default $k = 4$).
-- Computes percentage relevance scores for user transparency.
 
-### 6. Grounded LLM Prompt & Answer Generation (`backend/services/ragService.js`)
-- The retrieved excerpts are formatted into a structured prompt.
+### 6. LLM Reranking (`backend/services/rerankerService.js`)
+- The selected provider's existing chat model ranks only the fused shortlist and must return every supplied candidate ID exactly once.
+- Passage text is serialized as JSON data and explicitly treated as untrusted input. Invalid or incomplete candidate rankings are rejected.
+- The final answer context is limited to the requested `topK` after reranking.
+
+### 7. Grounded LLM Prompt & Answer Generation (`backend/services/ragService.js`)
+- The reranked excerpts are formatted into a structured prompt; retrieved excerpts are explicitly treated as untrusted data.
 - **Strict Guardrail Rules**:
   - The LLM is instructed to answer **only** using facts present in the excerpts.
   - If the document lacks sufficient information, the model must output:  
@@ -134,7 +146,7 @@ DocuMind AI executes the complete RAG workflow through dedicated, modular backen
   - Hallucination and ungrounded extrapolation are strictly prohibited.
   - Page numbers (e.g., `[Page 2]`) must be cited whenever information is referenced.
 
-### 7. Page Citations & Attributions
+### 8. Page Citations & Attributions
 - The frontend renders the answer with a verification badge (`Answer grounded in document excerpts` or an amber `Insufficient information` warning).
 - Interactive citation cards show the exact page number, match confidence percentage, and the underlying excerpt from the source PDF.
 
@@ -170,7 +182,7 @@ DocuMind AI natively supports two major AI model providers:
 | **File Uploads** | `multer` | `^1.4.5-lts.1` | In-memory buffer upload with size & MIME filtering |
 | **Gemini SDK** | `@google/generative-ai` | `^0.24.1` | Official Google Generative AI client |
 | **OpenAI SDK** | `openai` | `^4.86.1` | Official OpenAI client |
-| **Vector Engine** | Custom In-Memory | N/A | Pure JS Cosine Similarity implementation |
+| **Retrieval Engine** | Custom In-Memory | N/A | Cosine similarity, BM25, reciprocal rank fusion, and provider-based LLM reranking |
 
 ---
 
@@ -192,8 +204,10 @@ RAG/
 │   │   ├── pdfService.js         # Page-aware PDF parsing
 │   │   ├── chunkerService.js     # Recursive character text chunking
 │   │   ├── embeddingService.js   # Batch embedding generation (Gemini & OpenAI)
-│   │   ├── vectorStore.js        # Cosine similarity index and session storage
-│   │   └── ragService.js         # RAG pipeline with grounded prompt constraints
+│   │   ├── retrievalService.js   # BM25 indexing/search and reciprocal rank fusion
+│   │   ├── rerankerService.js    # Provider chat-model candidate reranking
+│   │   ├── vectorStore.js        # In-memory vector and lexical indexes
+│   │   └── ragService.js         # Hybrid retrieval, reranking, and grounded generation
 │   ├── scripts/
 │   │   └── generateSamplePdf.js  # Generator for demo 3-page technical report
 │   ├── .env.example              # Template with placeholder variables

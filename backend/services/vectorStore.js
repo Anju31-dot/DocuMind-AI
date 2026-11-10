@@ -1,12 +1,14 @@
 /**
  * Vector Store - In-memory vector similarity index.
- * Stores document chunks with their embedding vectors and calculates cosine similarity.
+ * Stores document chunks, embeddings, and a BM25 index for hybrid retrieval.
  */
+const { buildBm25Index, reciprocalRankFusion, searchBm25 } = require('./retrievalService');
 
 class VectorStore {
   constructor() {
     this.activeDocument = null; // { docId, filename, fileSize, pageCount, chunkCount, uploadedAt, provider }
     this.chunks = []; // Array of { chunkId, docId, pageNumber, chunkIndex, text, charCount, tokenEstimate, embedding }
+    this.bm25Index = null;
   }
 
   /**
@@ -57,6 +59,18 @@ class VectorStore {
       throw error;
     }
 
+    const storedChunks = chunks.map(chunk => ({
+      chunkId: chunk.chunkId,
+      docId: chunk.docId,
+      pageNumber: chunk.pageNumber,
+      chunkIndex: chunk.chunkIndex,
+      text: chunk.text,
+      charCount: chunk.charCount,
+      tokenEstimate: chunk.tokenEstimate,
+      embedding: chunk.embedding
+    }));
+    const bm25Index = buildBm25Index(storedChunks);
+
     this.activeDocument = {
       docId: docMetadata.docId,
       filename: docMetadata.filename,
@@ -68,16 +82,8 @@ class VectorStore {
       embeddingModel: docMetadata.embeddingModel || 'default'
     };
 
-    this.chunks = chunks.map(chunk => ({
-      chunkId: chunk.chunkId,
-      docId: chunk.docId,
-      pageNumber: chunk.pageNumber,
-      chunkIndex: chunk.chunkIndex,
-      text: chunk.text,
-      charCount: chunk.charCount,
-      tokenEstimate: chunk.tokenEstimate,
-      embedding: chunk.embedding
-    }));
+    this.chunks = storedChunks;
+    this.bm25Index = bm25Index;
 
     return this.activeDocument;
   }
@@ -130,6 +136,30 @@ class VectorStore {
     return filtered.slice(0, topK);
   }
 
+  searchHybrid(query, queryEmbedding, candidateLimit = 16, minThreshold = 0.0) {
+    const semanticResults = this.search(queryEmbedding, candidateLimit, minThreshold);
+    const keywordResults = searchBm25(this.bm25Index, query, candidateLimit).map(chunk => {
+      const similarityScore = VectorStore.cosineSimilarity(queryEmbedding, chunk.embedding);
+      return {
+        ...chunk,
+        similarityScore,
+        similarity: parseFloat(similarityScore.toFixed(4)),
+        relevancePercent: Math.max(0, Math.min(100, Math.round(similarityScore * 100))),
+        similarityThresholdMet: similarityScore >= minThreshold
+      };
+    });
+    const fusedResults = reciprocalRankFusion(
+      [semanticResults, keywordResults],
+      candidateLimit
+    );
+
+    return {
+      semanticResults,
+      keywordResults,
+      fusedResults
+    };
+  }
+
   /**
    * Returns current active document info.
    */
@@ -165,6 +195,7 @@ class VectorStore {
   clear() {
     this.activeDocument = null;
     this.chunks = [];
+    this.bm25Index = null;
   }
 
   /**

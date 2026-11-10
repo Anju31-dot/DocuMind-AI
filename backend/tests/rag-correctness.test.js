@@ -85,7 +85,7 @@ test('filters chunks below the configured similarity threshold before generation
   };
 
   const result = await ragService.answerQuestion({
-    question: 'What does the document say?',
+    question: 'Explain quantum entanglement spectroscopy.',
     provider: 'gemini',
     apiKey: 'test-key'
   });
